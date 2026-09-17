@@ -1,0 +1,8 @@
+pnpm-lock.yaml
+node_modules/
+dist/
+packages/*/dist/
+coverage/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+*.ofd

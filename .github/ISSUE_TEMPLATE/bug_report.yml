@@ -1,0 +1,50 @@
+name: Bug report
+description: Something is not working as documented
+labels: ['bug']
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear description of the problem. What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Minimal code or PDF input that reproduces the issue.
+      placeholder: |
+        import { jsOFD } from 'jsofd';
+        // ...
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: Error message, generated .ofd, or a screenshot of the reader.
+  - type: input
+    id: version
+    attributes:
+      label: jsOFD version
+      placeholder: 'e.g. 1.0.0'
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options:
+        - Browser (which reader opens the .ofd?)
+        - Node.js
+        - Both
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I looked through existing issues and the README first.
+          required: true

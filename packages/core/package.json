@@ -1,0 +1,83 @@
+{
+  "name": "@hufe921/jsofd",
+  "version": "1.0.0",
+  "description": "Generate OFD (GB/T 33190-2016, Chinese national fixed-layout document standard) files in JavaScript/TypeScript — a jsPDF-compatible API for OFD.",
+  "keywords": [
+    "ofd",
+    "gbt33190",
+    "版式文档",
+    "电子发票",
+    "电子印章",
+    "jspdf",
+    "pdf",
+    "generator",
+    "typescript"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/jsofd.cjs",
+  "module": "./dist/jsofd.esm.js",
+  "unpkg": "./dist/jsofd.umd.js",
+  "jsdelivr": "./dist/jsofd.umd.js",
+  "browser": "./dist/jsofd.esm.js",
+  "types": "./dist/jsofd.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/jsofd.d.ts",
+      "import": "./dist/jsofd.esm.js",
+      "require": "./dist/jsofd.cjs",
+      "default": "./dist/jsofd.cjs"
+    },
+    "./pdf": {
+      "types": "./dist/pdf.d.ts",
+      "import": "./dist/pdf.esm.js",
+      "require": "./dist/pdf.cjs",
+      "default": "./dist/pdf.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "pdfjs-dist": ">=3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "pdfjs-dist": {
+      "optional": true
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hufe921/jsOFD.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hufe921/jsOFD/issues"
+  },
+  "homepage": "https://github.com/hufe921/jsOFD#readme",
+  "author": "hufe",
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "pdfjs-dist": "^6.3.289",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.1"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  }
+}
