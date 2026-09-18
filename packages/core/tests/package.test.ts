@@ -127,6 +127,12 @@ describe('OFD 包结构（GB/T 33190-2016）', () => {
   });
 
   it('生成的 XML 全部 well-formed（xmllint，若可用）', () => {
+    // Windows runner 上 `which` 来自 Git Bash，返回 cmd 无法解析的
+    // MSYS 风格路径（/c/...），直接跳过；Ubuntu 任务仍会做此校验。
+    if (process.platform === 'win32') {
+      console.warn('跳过 xmllint 校验（Windows 上路径不可用）');
+      return;
+    }
     let xmllint: string;
     try {
       xmllint = execSync('which xmllint').toString().trim();

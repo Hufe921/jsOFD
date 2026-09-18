@@ -74,6 +74,37 @@ interface PdfjsModule {
 let pdfjsCache: PdfjsModule | null = null;
 async function loadPdfjs(): Promise<PdfjsModule> {
   if (pdfjsCache) return pdfjsCache;
+  // pdfjs-dist legacy uses Promise.withResolvers and
+  // ArrayBuffer.prototype.transferToFixedLength (ES2024); Node < 22 and older
+  // browsers lack them, so install minimal polyfills before loading pdfjs.
+  const p = Promise as unknown as {
+    withResolvers?<T>(): {
+      promise: Promise<T>;
+      resolve: (value: T | PromiseLike<T>) => void;
+      reject: (reason?: unknown) => void;
+    };
+  };
+  if (typeof p.withResolvers !== 'function') {
+    p.withResolvers = function <T>() {
+      let resolve!: (value: T | PromiseLike<T>) => void;
+      let reject!: (reason?: unknown) => void;
+      const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      return { promise, resolve, reject };
+    };
+  }
+  const abp = ArrayBuffer.prototype as unknown as {
+    transferToFixedLength?: (length?: number) => ArrayBuffer;
+  };
+  if (typeof abp.transferToFixedLength !== 'function') {
+    abp.transferToFixedLength = function (this: ArrayBuffer, length?: number) {
+      const dest = new ArrayBuffer(length ?? this.byteLength);
+      new Uint8Array(dest).set(new Uint8Array(this, 0, dest.byteLength));
+      return dest;
+    };
+  }
   const mod = (await import('pdfjs-dist/legacy/build/pdf.mjs')) as unknown as PdfjsModule;
   pdfjsCache = mod;
   return mod;

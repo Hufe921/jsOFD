@@ -3,14 +3,14 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { jsOFD } from '../src/index';
 import { parseFont } from '../src/font-parse';
 import { readZip, text } from './helpers/zipreader';
 
-/** Arial Unicode MS covers both Latin and CJK; ships with macOS. */
-const TTF_PATH = '/Library/Fonts/Arial Unicode.ttf';
-const ttf = readFileSync(TTF_PATH);
+/** Noto Sans SC (OFL) subset covering the glyphs used below; built with hb-subset. */
+const ttf = readFileSync(join(__dirname, 'fixtures', 'embed-test.ttf'));
 
 describe('parseFont', () => {
   it('reads units per em, vertical metrics and cmap widths', () => {
