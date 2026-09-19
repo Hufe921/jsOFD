@@ -158,9 +158,14 @@ function mapFont(
   }
   if (hasCJK(sample)) key = BUILTIN_FONTS[key]?.cjk ? key : 'simsun';
   let style: 'normal' | 'bold' | 'italic' | 'bolditalic' = 'normal';
-  if (font.bold) style = 'bold';
+  if (fontBold(font)) style = 'bold';
   if (font.italic) style = style === 'bold' ? 'bolditalic' : 'italic';
   return { key, style };
+}
+
+/** pdfjs drops the bold flag when a real font program was loaded; fall back to the name. */
+function fontBold(font: PdfFontObj): boolean {
+  return !!font.bold || /bold|black/i.test(String(font.name || ''));
 }
 
 /* ---------------- Embedded font registry ---------------- */
@@ -175,6 +180,8 @@ function mapFont(
 interface FontReg {
   key: string;
   embedded: boolean;
+  /** True when the font name carries the `XXXXXX+` subset prefix. */
+  isSubset: boolean;
   /** Code points present in the embedded font's cmap (coverage checks). */
   glyphs?: Set<number>;
 }
@@ -202,10 +209,15 @@ function registerFont(
       if (!doc.customFonts[key]) {
         doc.addFontTtf(key, cleanFontName(String(font.name || key)), data);
       }
-      reg = { key, embedded: true, glyphs: new Set(parsed.glyphs.keys()) };
+      reg = {
+        key,
+        embedded: true,
+        isSubset: /^[A-Z]{6}\+/.test(String(font.name || '')),
+        glyphs: new Set(parsed.glyphs.keys()),
+      };
     }
   }
-  if (!reg) reg = { key: '', embedded: false };
+  if (!reg) reg = { key: '', embedded: false, isSubset: false };
   registry.set(fontId, reg);
   return reg;
 }
@@ -430,15 +442,25 @@ export function configurePdfImport(opts: {
 /** Auto-locate the cmaps / standard_fonts directories shipped with pdfjs-dist in Node. */
 function nodeAssetDir(sub: string): string | undefined {
   try {
-    const req = new Function('m', 'return require(m)') as (m: string) => { paths?: unknown };
-    const pkg = req('pdfjs-dist/package.json') as unknown as string;
-    void pkg;
-    const pathReq = new Function('m', 'return require(m)')('node:path') as {
+    // pdfjs's Node factories read assets with fs.readFile, so the URL must be
+    // a plain filesystem path. Resolve pdfjs-dist relative to the caller (CJS
+    // `require` when available, else createRequire anchored at the process cwd
+    // — `require` does not exist in ESM scope).
+    let req: ((m: string) => unknown) & { resolve?: (m: string) => string };
+    const mod = (
+      process as { getBuiltinModule?: (m: string) => { createRequire: unknown } | undefined }
+    ).getBuiltinModule?.('module');
+    if (mod && typeof mod.createRequire === 'function') {
+      req = (mod.createRequire as (id: string) => (m: string) => unknown)(process.cwd() + '/');
+    } else {
+      req = new Function('m', 'return require(m)') as (m: string) => unknown;
+    }
+    const pathReq = req('node:path') as {
       dirname: (p: string) => string;
       join: (...p: string[]) => string;
     };
-    const resolve = new Function('m', 'return require.resolve(m)') as (m: string) => string;
-    const pkgPath = resolve('pdfjs-dist/package.json');
+    const pkgPath = req.resolve?.('pdfjs-dist/package.json');
+    if (!pkgPath) return undefined;
     return pathReq.join(pathReq.dirname(pkgPath), sub) + '/';
   } catch {
     return undefined;
@@ -558,6 +580,12 @@ async function convertPage(
   let fontId: string;
   let fontSize = 12;
   let inText = false;
+  // pdfjs convention: the addend moveText applies on nextLine (T*), i.e. -TL
+  // (setLeading) or ty (TD / setLeadingMoveText).
+  let leading = 0;
+  // Tc / Tw in unscaled text-space units (added per glyph, not per fontSize).
+  let charSpacing = 0;
+  let wordSpacing = 0;
 
   // Path under construction (PDF user space)
   let pathOps: PathOp[] = [];
@@ -659,7 +687,7 @@ async function convertPage(
     const { key, style } = fontReg?.embedded
       ? {
           key: fontReg.key,
-          style: (fontObj.bold
+          style: (fontBold(fontObj)
             ? fontObj.italic
               ? 'bolditalic'
               : 'bold'
@@ -926,13 +954,26 @@ async function convertPage(
       textMatrix = [ma!, mb!, mc!, md!, me!, mf!];
       textLine = [...textMatrix] as Mat;
       if (inText) flushText(); // position jump
-    } else if (op === OPS.moveText) {
+    } else if (op === OPS.moveText || op === OPS.setLeadingMoveText) {
+      // Td / TD. TD ≡ -ty TL then tx ty Td; pdfjs emits it as one operator and
+      // many producers place ALL positioning in TD with a zero-translation Tm
+      // — dropping it would pile every text run at the origin.
       const tv = typeof a[0] === 'number' ? (a as unknown as number[]) : numArr(a[0]);
+      if (op === OPS.setLeadingMoveText) leading = Number(tv[1] ?? 0);
       textLine = translate(textLine, tv[0] ?? 0, tv[1] ?? 0);
       textMatrix = [...textLine] as Mat;
       if (inText) flushText();
     } else if (op === OPS.nextLine) {
-      // leading arrives via moveText
+      // T*: move down by the leading; textLine already carries the position.
+      textLine = translate(textLine, 0, leading);
+      textMatrix = [...textLine] as Mat;
+      if (inText) flushText();
+    } else if (op === OPS.setLeading) {
+      leading = -Number(a[0]);
+    } else if (op === OPS.setCharSpacing) {
+      charSpacing = Number(a[0]) || 0;
+    } else if (op === OPS.setWordSpacing) {
+      wordSpacing = Number(a[0]) || 0;
     } else if (op === OPS.showText || op === OPS.showSpacedText) {
       if (!fontObj) continue;
       const glyphs = anyArr(a[0]) as (PdfGlyph | number)[];
@@ -951,10 +992,14 @@ async function convertPage(
         // Subset fonts often have no space glyph (PDFs space words with TJ
         // offsets instead): skip such whitespace — DeltaX keeps the gap exact
         // and readers won't render a .notdef box for a missing cmap entry.
+        // Only for true subsets (XXXXXX+ prefix): standard-font programs keep
+        // their space glyph, and an unparseable (empty) cmap proves nothing.
         const reg = fontReg;
         if (
           reg?.embedded &&
           reg.glyphs &&
+          reg.glyphs.size > 0 &&
+          reg.isSubset &&
           /^\s+$/.test(u) &&
           ![...u].some((ch) => reg.glyphs!.has(ch.codePointAt(0)!))
         ) {
@@ -966,11 +1011,13 @@ async function convertPage(
         const p = pending as { text: string; ws: number[] } | null;
         if (!p) continue;
         p.text += u;
-        // Device-space advance (font size x text matrix x CTM)
+        // Device-space advance (glyph width x fontSize + Tc/Tw, then text
+        // matrix x CTM; spacing is added unscaled per PDF spec).
         const tmScale = Math.hypot(textMatrix[0], textMatrix[1]) || 1;
-        const devAdv = ((g.width ?? 500) / 1000) * fontSize * tmScale * avgScale(gs.ctm);
-        p.ws.push(devAdv);
-        advanceText(((g.width ?? 500) / 1000) * fontSize);
+        const adv =
+          ((g.width ?? 500) / 1000) * fontSize + charSpacing + (g.isSpace ? wordSpacing : 0);
+        p.ws.push(adv * tmScale * avgScale(gs.ctm));
+        advanceText(adv);
       }
     } else if (
       op === OPS.paintImageXObject ||

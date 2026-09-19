@@ -27,7 +27,10 @@ describe('pdfToOfd', () => {
     expect(hello!.x).toBeCloseTo(72, 0);
     expect(hello!.y).toBeCloseTo(142, 0);
     expect(hello!.size).toBeCloseTo(24, 0);
-    expect(hello!.fontKey).toBe('helvetica');
+    expect(hello!.fontKey).toBeDefined();
+    // Base14 字体在 pdfjs 标准字体资产可用时（Node 自动定位 / 浏览器传入）随转换
+    // 以字体程序嵌入 OFD，保证跨阅读器渲染一致
+    expect(doc.customFonts[hello!.fontKey]).toBeDefined();
     expect(hello!.glyphWs!.length).toBe('Hello PDF'.length);
 
     const second = texts.find((t) => t.text === 'Second line');

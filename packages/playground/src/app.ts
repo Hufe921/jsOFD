@@ -452,12 +452,45 @@ function toDataUrl(u8: Uint8Array, format: string): string {
   return `data:image/${mime};base64,${btoa(s)}`;
 }
 
+function fontDataUrl(u8: Uint8Array): string {
+  let s = '';
+  const CH = 0x8000;
+  for (let i = 0; i < u8.length; i += CH) {
+    s += String.fromCharCode(...u8.subarray(i, i + CH));
+  }
+  return `data:font/ttf;base64,${btoa(s)}`;
+}
+
+// @font-face rules for the document's embedded fonts, memoised per doc —
+// the preview must draw PDF-imported runs with the embedded metrics, which
+// are narrower than any system fallback (tight per-character pitch, e.g.
+// invoice credit codes, otherwise overlaps).
+let fontCssDoc: jsOFD | null = null;
+let fontCss = '';
+
+function embeddedFontStyle(): string {
+  if (!doc) return '';
+  if (fontCssDoc !== doc) {
+    const rules: string[] = [];
+    for (const [key, def] of Object.entries(doc.customFonts)) {
+      if (!def.fontFile?.data) continue;
+      rules.push(
+        `@font-face{font-family:"ofd-${key}";src:url(${fontDataUrl(def.fontFile.data)});}`,
+      );
+    }
+    fontCss = rules.join('');
+    fontCssDoc = doc;
+  }
+  return fontCss;
+}
+
 function pageSvg(page: PageData, z: number): string {
   const W = page.width * PT2MM;
   const H = page.height * PT2MM;
   let svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${(W * z).toFixed(1)}" height="${(H * z).toFixed(1)}" ` +
     `viewBox="0 0 ${W.toFixed(3)} ${H.toFixed(3)}">` +
+    `<defs><style>${embeddedFontStyle()}</style></defs>` +
     `<rect width="100%" height="100%" fill="#fff"/>`;
   for (const o of page.objects) {
     if (o.t === 'text') {
@@ -466,28 +499,48 @@ function pageSvg(page: PageData, z: number): string {
       // Attribute values go through esc(): the font list contains double
       // quotes, and an unescaped font-family="" broke the attribute and
       // silently dropped the intended font (fallback metrics ⇒ drifted text).
-      const family = esc(FONT_MAP[o.fontKey] || 'sans-serif');
+      // Embedded fonts win over the system map: their metrics match the
+      // pinned advances, system fallbacks are wider and collide on tight
+      // per-character pitch.
+      const fallback = FONT_MAP[o.fontKey] || 'sans-serif';
+      const family = esc(
+        doc && doc.customFonts[o.fontKey] ? `"ofd-${o.fontKey}", ${fallback}` : fallback,
+      );
       const weight = o.style === 'bold' || o.style === 'bolditalic' ? ' font-weight="bold"' : '';
       const italic = o.style === 'italic' || o.style === 'bolditalic' ? ' font-style="italic"' : '';
-      // Per-glyph advances (PDF import / justify) pin the run width exactly —
-      // without textLength the browser's fallback font metrics drift and the
-      // run overflows the position the .ofd reader would place it at.
-      const adv = o.glyphWs ? o.glyphWs.reduce((s, w) => s + w, 0) * (o.hScale ?? 1) : null;
-      const tl =
-        adv !== null && o.text.length > 1
-          ? ` textLength="${(adv * PT2MM).toFixed(4)}" lengthAdjust="spacing"`
-          : '';
-      const ls = !tl && o.charSpace ? ` letter-spacing="${(o.charSpace * PT2MM).toFixed(4)}"` : '';
       const tr = o.angle ? ` transform="rotate(${o.angle} ${x} ${y})"` : '';
-      svg +=
-        `<text x="${x}" y="${y}" font-size="${(o.size * PT2MM).toFixed(3)}" font-family="${family}"` +
+      const open =
+        `<text y="${y.toFixed(3)}" font-size="${(o.size * PT2MM).toFixed(3)}" font-family="${family}"` +
         weight +
         italic +
-        ls +
-        tl +
         ` fill="rgb(${o.color.join(',')})"` +
         tr +
-        `>${esc(o.text)}</text>`;
+        `>`;
+      // Per-glyph advances (PDF import / justify): place every glyph at its
+      // exact cumulative offset. textLength cannot express start-to-start
+      // distances — it pins the run END, so when the browser's natural
+      // advance exceeds the pinned width Chrome drags the last glyph
+      // backward onto its neighbour (2-glyph runs like "6%" overlap).
+      if (o.glyphWs && o.text.length > 1) {
+        const hS = o.hScale ?? 1;
+        let cur = o.x;
+        let spans = '';
+        for (let i = 0; i < o.text.length; i++) {
+          spans += `<tspan x="${(cur * PT2MM).toFixed(3)}">${esc(o.text[i]!)}</tspan>`;
+          cur += (o.glyphWs[i] ?? 0) * hS + o.charSpace;
+        }
+        svg += open + spans + '</text>';
+      } else {
+        const ls = o.charSpace ? ` letter-spacing="${(o.charSpace * PT2MM).toFixed(4)}"` : '';
+        svg +=
+          `<text x="${x}" y="${y}" font-size="${(o.size * PT2MM).toFixed(3)}" font-family="${family}"` +
+          weight +
+          italic +
+          ls +
+          ` fill="rgb(${o.color.join(',')})"` +
+          tr +
+          `>${esc(o.text)}</text>`;
+      }
     } else if (o.t === 'path') {
       let d = '';
       for (const op of o.ops) {

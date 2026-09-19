@@ -1,6 +1,6 @@
 {
   "name": "@hufe921/jsofd",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Generate OFD (GB/T 33190-2016, Chinese national fixed-layout document standard) files in JavaScript/TypeScript — a jsPDF-compatible API for OFD.",
   "keywords": [
     "ofd",

@@ -375,6 +375,34 @@ function textObjectXml(
   colorSpaceId: number,
   allocId: AllocId,
 ): string {
+  // A 2-glyph run serialises to a single-entry DeltaX ("1.5") — no spaces —
+  // and some readers then parse it as a scalar instead of an array, apply no
+  // per-glyph offsets and stack both glyphs on the run origin. Split such
+  // runs into two absolutely positioned single-glyph objects: no DeltaX, so
+  // there is nothing to mis-parse. (Runs with ≥3 glyphs emit ≥2 DeltaX
+  // entries, which every reader treats as an array.)
+  if (
+    obj.glyphWs &&
+    obj.glyphWs.length === 2 &&
+    obj.text.length === 2 &&
+    obj.glyphWs.every((w) => Number.isFinite(w)) &&
+    !obj.angle &&
+    !(obj.hScale && obj.hScale !== 1) &&
+    obj.justifyWidth === null
+  ) {
+    const [w0, w1] = obj.glyphWs;
+    const first: TextRun = { ...obj, text: obj.text[0]!, glyphWs: [w0!] };
+    const second: TextRun = {
+      ...obj,
+      x: obj.x + w0! + obj.charSpace,
+      text: obj.text[1]!,
+      glyphWs: [w1!],
+    };
+    return (
+      textObjectXml(ctx, fontsUsed, first, colorSpaceId, allocId) +
+      textObjectXml(ctx, fontsUsed, second, colorSpaceId, allocId)
+    );
+  }
   const M = MM_PER_PT;
   const id = allocId();
   const fu = fontsUsed[`${obj.fontKey}#${obj.style}`];
