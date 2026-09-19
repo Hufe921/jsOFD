@@ -615,6 +615,47 @@ function render(): void {
   $('docInfo').textContent = fileName;
   updatePager();
   scrollToPage(pageIdx, false);
+  hideOverlayWhenFontsReady();
+}
+
+/* ---------------- preview loading overlay ---------------- */
+
+function pvOverlayShow(text: string): void {
+  const ov = $('pvOverlay');
+  ($('pvOverlayText') as HTMLElement).textContent = text;
+  ov.classList.add('on');
+}
+
+function pvOverlayHide(): void {
+  $('pvOverlay').classList.remove('on');
+}
+
+/**
+ * The preview paints before the document's embedded fonts finish downloading;
+ * system fallbacks have different metrics (glyphs may briefly touch). Keep the
+ * pane covered until every face is ready — or at most 8s, so a stalled font
+ * request can never wedge the pane shut. Cached fonts resolve immediately.
+ */
+function hideOverlayWhenFontsReady(): void {
+  if (!doc) {
+    pvOverlayHide();
+    return;
+  }
+  const pending = Object.keys(doc.customFonts).filter(
+    (k) => !document.fonts.check(`16px "ofd-${k}"`),
+  );
+  if (!pending.length) {
+    pvOverlayHide();
+    return;
+  }
+  pvOverlayShow('正在加载嵌入字体…');
+  const loads = Promise.all(
+    pending.map((k) => document.fonts.load(`16px "ofd-${k}"`).catch(() => [])),
+  );
+  const timeout = new Promise((r) => setTimeout(r, 8000));
+  Promise.race([loads, timeout])
+    .catch(() => undefined)
+    .then(() => pvOverlayHide());
 }
 
 function updatePager(): void {
@@ -684,6 +725,7 @@ async function convertPdf(): Promise<void> {
   const btn = $('convert') as HTMLButtonElement;
   btn.disabled = true;
   btn.textContent = '转换中…';
+  pvOverlayShow('正在转换 PDF…');
   log(`⏳ 解析 ${selectedPdf.name} (${(selectedPdf.size / 1024).toFixed(1)} KB)`, 'dim');
   try {
     const { pdfToOfd } = await import('@hufe921/jsofd/pdf');
@@ -699,7 +741,10 @@ async function convertPdf(): Promise<void> {
       workerSrc: workerUrl,
       cMapUrl: `${pdfAssets}cmaps/`,
       standardFontDataUrl: `${pdfAssets}standard_fonts/`,
-      onProgress: (i, n) => log(`  第 ${i + 1}/${n} 页…`, 'dim'),
+      onProgress: (i, n) => {
+        pvOverlayShow(`正在转换 PDF… 第 ${i + 1}/${n} 页`);
+        log(`  第 ${i + 1}/${n} 页…`, 'dim');
+      },
     });
     registerEmbeddedFont(converted);
     doc = converted;
@@ -713,6 +758,7 @@ async function convertPdf(): Promise<void> {
       'ok',
     );
   } catch (e) {
+    pvOverlayHide();
     log('✗ 转换失败: ' + (e as Error).message, 'err');
   } finally {
     btn.disabled = false;
@@ -750,6 +796,9 @@ async function bootstrap(): Promise<void> {
   $('pvScroll').scrollTop = 0;
 
   $('ver').textContent = 'v' + version;
+  // The Noto faces are ~3 MB combined; cover the fetch instead of showing a
+  // dead pane (render() keeps/hides the overlay once the fonts are in).
+  pvOverlayShow('正在加载嵌入字体…');
   await loadEmbeddedFont();
   const loaded = [serifFont && '宋体系', sansFont && '黑体'].filter(Boolean).join(' + ');
   log(
