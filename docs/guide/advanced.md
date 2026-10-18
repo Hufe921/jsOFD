@@ -159,3 +159,33 @@ doc.autoPaging(chapters.join('\n\n'), { x: 20, topMargin: 28, bottomMargin: 28 }
 const endY = doc.table(20, doc.autoPaging 返回值 + 10, { columns, rows });
 doc.headerFooter({ footer: (d, i) => d.text(`${i.pageNumber} / ${i.pageCount}`, 105, 288, { align: 'center' }) });
 ```
+
+## 水印
+
+文字或图片水印，支持单枚居中与平铺两种模式，可放在内容上方或下方：
+
+```ts
+// 文字水印：默认全部页面、45° 斜排、半透明
+doc.addWatermark({ text: '绝密', opacity: 0.12 });
+
+// 平铺 + 仅当前页 + 置于内容下方
+doc.addWatermark({ text: '草稿', mode: 'tile', fontSize: 24, layer: 'under' });
+
+// 图片水印（PNG 透明底最佳），只盖第 2 页
+doc.addWatermark({ image: sealPng, imageWidth: 120, pages: [2] });
+```
+
+## 关键字脱敏
+
+在已排版的文本中定位关键字并遮盖，**字形推进不变、版面不错位**：
+
+```ts
+// 遮盖模式：黑色矩形盖住关键字，文本替换为空格（提取/复制不再泄漏）
+const hits = doc.redact(['王小明', '13800138000']);
+// hits → [{ keyword: '王小明', page: 1, count: 1 }, ...]
+
+// 星号模式：关键字替换为 *，其余位置不动
+doc.redact('绝密', { mode: 'asterisk', pages: 'current' });
+```
+
+`hits` 里 `page` 为 1 起始页码（0 表示未命中），`count` 为该页命中次数。

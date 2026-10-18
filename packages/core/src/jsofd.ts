@@ -44,6 +44,8 @@ import { SvgApi } from './modules/svg';
 import { TableApi } from './modules/table';
 import { TextApi } from './modules/text';
 import { ViewApi } from './modules/view';
+import { WatermarkApi } from './modules/watermark';
+import { RedactApi } from './modules/redact';
 
 export const JSOFD_VERSION = '1.0.0';
 
@@ -321,4 +323,6 @@ Object.assign(
   HtmlApi,
   SvgApi,
   ViewApi,
+  WatermarkApi,
+  RedactApi,
 );

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { jsOFD } from '../src/jsofd';
+import * as api from '../src/index';
 import { readZip, text } from './helpers/zipreader';
 
 function buildSample(): Uint8Array {
@@ -146,5 +147,14 @@ describe('OFD 包结构（GB/T 33190-2016）', () => {
       writeFileSync(p, data);
       execSync(`"${xmllint}" --noout "${p}"`);
     }
+  });
+});
+
+describe('公共 SES API', () => {
+  it('从包入口导出签章、验签、制章和测试签名器', () => {
+    expect(typeof api.signOfd).toBe('function');
+    expect(typeof api.verifyOfd).toBe('function');
+    expect(typeof api.createSesSeal).toBe('function');
+    expect(typeof api.createLocalTestSm2Signer).toBe('function');
   });
 });

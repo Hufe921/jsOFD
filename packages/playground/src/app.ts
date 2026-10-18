@@ -6,7 +6,8 @@
  * projection of the same object model that serializes into the .ofd.
  */
 import { jsOFD, version } from '@hufe921/jsofd';
-import type { PageData } from '@hufe921/jsofd';
+import type { OfdVerifyResult, PageData } from '@hufe921/jsofd';
+import type { SesTestMaterial } from '../../core/tests/helpers/ses-material';
 // pdfjs worker served as a local Vite asset (no CDN dependency).
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
@@ -716,11 +717,46 @@ function selectPreset(name: string): void {
   ($('code') as HTMLTextAreaElement).value = PRESETS[name]!;
 }
 
-/* ---------------- PDF conversion ---------------- */
+/* ---------------- PDF conversion / OFD opening ---------------- */
 
 let selectedPdf: File | null = null;
+/** True when the selected file is an .ofd package (open instead of convert). */
+let selectedIsOfd = false;
+
+async function openOfdFile(): Promise<void> {
+  if (!selectedPdf) return;
+  const btn = $('convert') as HTMLButtonElement;
+  btn.disabled = true;
+  btn.textContent = '打开中…';
+  pvOverlayShow('正在解析 OFD…');
+  log(`⏳ 读取 ${selectedPdf.name} (${(selectedPdf.size / 1024).toFixed(1)} KB)`, 'dim');
+  try {
+    const { openOfd } = await import('@hufe921/jsofd');
+    const buf = new Uint8Array(await selectedPdf.arrayBuffer());
+    const t0 = performance.now();
+    const opened = await openOfd(buf, {
+      onProgress: (i, n) => pvOverlayShow(`正在解析 OFD… 第 ${i + 1}/${n} 页`),
+    });
+    doc = opened;
+    pageIdx = 0;
+    fileName = selectedPdf.name;
+    render();
+    const objects = opened.pages.reduce((s, p) => s + p.objects.length, 0);
+    log(
+      `✓ 打开成功: ${opened.pages.length} 页 / ${objects} 个对象 / ${Math.round(performance.now() - t0)}ms（下载按钮可导出重新序列化的 .ofd）`,
+      'ok',
+    );
+  } catch (e) {
+    pvOverlayHide();
+    log('✗ 打开失败: ' + (e as Error).message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '打开 OFD';
+  }
+}
 
 async function convertPdf(): Promise<void> {
+  if (selectedIsOfd) return openOfdFile();
   if (!selectedPdf) return;
   const btn = $('convert') as HTMLButtonElement;
   btn.disabled = true;
@@ -768,24 +804,177 @@ async function convertPdf(): Promise<void> {
 
 function setPdfFile(file: File | null): void {
   selectedPdf = file;
+  selectedIsOfd = !!file && /\.ofd$/i.test(file.name);
   const chip = $('fileChip');
   const has = !!file;
   chip.style.display = has ? 'flex' : 'none';
   ($('clearFile') as HTMLButtonElement).style.display = has ? 'inline-flex' : 'none';
   ($('convert') as HTMLButtonElement).disabled = !has;
+  ($('convert') as HTMLButtonElement).textContent = selectedIsOfd ? '打开 OFD' : '▸ 转换为 OFD';
   if (file) {
     $('fileName').textContent = file.name;
     $('fileSize').textContent = `${(file.size / 1024).toFixed(1)} KB`;
   }
 }
 
+/** Open an OFD file from a URL (?ofd=<url> share/deep-link). */
+async function openOfdFromUrl(url: string): Promise<void> {
+  pvOverlayShow('正在下载 OFD…');
+  log(`⏳ 拉取 ${url}`, 'dim');
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const { openOfd } = await import('@hufe921/jsofd');
+    doc = await openOfd(bytes);
+    pageIdx = 0;
+    fileName = url.split('/').pop()?.replace(/\?.*$/, '') || 'sample.ofd';
+    render();
+    log(`✓ 已打开 ${fileName}（${ofdPagesSummary()}）`, 'ok');
+  } catch (e) {
+    pvOverlayHide();
+    log('✗ 打开 OFD 失败: ' + (e as Error).message, 'err');
+  }
+}
+
+function ofdPagesSummary(): string {
+  if (!doc) return '';
+  return `${doc.pages.length} 页 / ${doc.pages.reduce((s, p) => s + p.objects.length, 0)} 个对象`;
+}
+
+/* ---------------- SES electronic signature demo ---------------- */
+
+let signatureMaterial: SesTestMaterial | null = null;
+let lastSigned: Uint8Array | null = null;
+let selectedSigned: Uint8Array | null = null;
+
+function downloadBytes(bytes: Uint8Array, name: string): void {
+  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/ofd' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+async function demoSealPng(): Promise<Uint8Array> {
+  const canvas = document.createElement('canvas');
+  canvas.width = 160;
+  canvas.height = 160;
+  const context = canvas.getContext('2d')!;
+  context.clearRect(0, 0, 160, 160);
+  context.strokeStyle = '#d22626';
+  context.fillStyle = '#d22626';
+  context.lineWidth = 6;
+  context.beginPath();
+  context.arc(80, 80, 70, 0, Math.PI * 2);
+  context.stroke();
+  context.font = 'bold 26px sans-serif';
+  context.textAlign = 'center';
+  context.fillText('测试签章', 80, 90);
+  const blob = await new Promise<Blob>((resolve) => canvas.toBlob((value) => resolve(value!), 'image/png'));
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+async function demoMaterial(): Promise<SesTestMaterial> {
+  if (!signatureMaterial) {
+    const { createSesTestMaterial } = await import('../../core/tests/helpers/ses-material');
+    const data = await demoSealPng();
+    signatureMaterial = await createSesTestMaterial({ type: 'PNG', data, width: 40, height: 40 });
+  }
+  return signatureMaterial;
+}
+
+function showSignatureReport(report: OfdVerifyResult): void {
+  const summary = report.signatures.length
+    ? report.signatures
+        .map(
+          (item) =>
+            `${item.id || '签章'}：${item.status}（签章者 ${item.signerTrust.status} / 制章者 ${item.makerTrust.status}）`,
+        )
+        .join('；')
+    : report.errors.join('；') || '未发现签章';
+  $('signatureInfo').textContent = summary;
+  const valid = report.signatures.length > 0 && report.signatures.every((item) => item.status === 'valid');
+  log(valid ? '✓ 签章与证书链验证通过，文档未被篡改' : `✗ 验签结果：${summary}`, valid ? 'ok' : 'err');
+}
+
+async function signCurrentDemo(): Promise<void> {
+  if (!doc) {
+    log('✗ 请先运行示例或打开一个 OFD 文档', 'err');
+    return;
+  }
+  try {
+    const material = await demoMaterial();
+    const { signOfd, verifyOfd } = await import('@hufe921/jsofd');
+    const bytes = doc.output('uint8array') as Uint8Array;
+    lastSigned = await signOfd(bytes, {
+      eSeal: material.eSeal,
+      signingCertificate: material.signingCertificate,
+      signer: material.signer,
+      stamp: { page: 1, x: 120, y: 240, w: 40, h: 40 },
+    });
+    selectedSigned = null;
+    ($('signatureFile') as HTMLInputElement).value = '';
+    ($('downloadSigned') as HTMLButtonElement).disabled = false;
+    const name = fileName.replace(/\.ofd$/i, '') + '-signed.ofd';
+    downloadBytes(lastSigned, name);
+    showSignatureReport(await verifyOfd(lastSigned, material.trustOptions()));
+  } catch (e) {
+    log('✗ 签章失败: ' + (e as Error).message, 'err');
+  }
+}
+
+async function verifySignedDemo(): Promise<void> {
+  const signed = selectedSigned ?? lastSigned;
+  if (!signed) {
+    log('✗ 请先签章当前文档或选择签章 OFD 文件', 'err');
+    return;
+  }
+  try {
+    const material = await demoMaterial();
+    const { verifyOfd } = await import('@hufe921/jsofd');
+    showSignatureReport(await verifyOfd(signed, material.trustOptions()));
+  } catch (e) {
+    log('✗ 验签失败: ' + (e as Error).message, 'err');
+  }
+}
+
+async function tamperSignedDemo(): Promise<void> {
+  const signed = selectedSigned ?? lastSigned;
+  if (!signed) {
+    log('✗ 请先签章当前文档或选择签章 OFD 文件', 'err');
+    return;
+  }
+  try {
+    const material = await demoMaterial();
+    const [{ verifyOfd }, { unzip }, { zipStore }] = await Promise.all([
+      import('@hufe921/jsofd'),
+      import('../../core/src/zip-read'),
+      import('../../core/src/zip'),
+    ]);
+    const entries = await unzip(signed);
+    const name = 'Doc_0/Pages/Page_0/Content.xml';
+    const content = entries.get(name)?.slice();
+    if (!content) throw new Error('签章文件中找不到用于演示的页面内容');
+    content[content.length - 2] ^= 1;
+    entries.set(name, content);
+    const tampered = zipStore([...entries].map(([entryName, data]) => ({ name: entryName, data })));
+    showSignatureReport(await verifyOfd(tampered, material.trustOptions()));
+  } catch (e) {
+    log('✗ 篡改验签失败: ' + (e as Error).message, 'err');
+  }
+}
+
 /* ---------------- init ---------------- */
 
-function switchTab(name: 'examples' | 'pdf'): void {
+function switchTab(name: 'examples' | 'pdf' | 'crypto'): void {
   $('tab-examples').classList.toggle('on', name === 'examples');
   $('tab-pdf').classList.toggle('on', name === 'pdf');
+  $('tab-crypto').classList.toggle('on', name === 'crypto');
   $('panel-examples').classList.toggle('hidden', name !== 'examples');
   $('panel-pdf').classList.toggle('hidden', name !== 'pdf');
+  $('panel-crypto').classList.toggle('hidden', name !== 'crypto');
 }
 
 async function bootstrap(): Promise<void> {
@@ -832,6 +1021,22 @@ async function bootstrap(): Promise<void> {
   // tabs
   $('tab-examples').addEventListener('click', () => switchTab('examples'));
   $('tab-pdf').addEventListener('click', () => switchTab('pdf'));
+  $('tab-crypto').addEventListener('click', () => switchTab('crypto'));
+
+  // SES signature demo
+  $('signCurrent').addEventListener('click', () => void signCurrentDemo());
+  $('verifySigned').addEventListener('click', () => void verifySignedDemo());
+  $('tamperSigned').addEventListener('click', () => void tamperSignedDemo());
+  $('downloadSigned').addEventListener('click', () => {
+    if (lastSigned) downloadBytes(lastSigned, fileName.replace(/\.ofd$/i, '') + '-signed.ofd');
+  });
+  $('signatureFile').addEventListener('change', async (event) => {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    selectedSigned = new Uint8Array(await file.arrayBuffer());
+    lastSigned = null;
+    $('signatureInfo').textContent = `已选择 ${file.name}，点击“验证签章”或“篡改后验证”。`;
+  });
 
   // run / download
   $('run').addEventListener('click', run);
@@ -904,8 +1109,8 @@ async function bootstrap(): Promise<void> {
     e.preventDefault();
     drop.classList.remove('over');
     const f = e.dataTransfer?.files?.[0];
-    if (f && /\.pdf$/i.test(f.name)) setPdfFile(f);
-    else log('✗ 请拖入 .pdf 文件', 'err');
+    if (f && /\.(pdf|ofd)$/i.test(f.name)) setPdfFile(f);
+    else log('✗ 请拖入 .pdf 或 .ofd 文件', 'err');
   });
   fileInput.addEventListener('change', () => {
     const f = fileInput.files?.[0];
@@ -918,6 +1123,11 @@ async function bootstrap(): Promise<void> {
   });
 
   run();
+
+  // Deep link: ?ofd=<url> opens an OFD package directly (after the example
+  // bootstrap so the preview pipeline is warm).
+  const ofdUrl = new URLSearchParams(location.search).get('ofd');
+  if (ofdUrl) void openOfdFromUrl(ofdUrl);
 }
 
 void bootstrap();

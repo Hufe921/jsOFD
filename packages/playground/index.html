@@ -379,6 +379,32 @@
         font-size: 12px;
         line-height: 1.7;
       }
+      .crypto-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        color: var(--text-2);
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .crypto-field input {
+        width: 100%;
+        padding: 9px 10px;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--r-sm);
+        background: var(--surface);
+        color: var(--text);
+        outline: none;
+      }
+      .crypto-field input:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(47, 95, 232, 0.12);
+      }
+      .crypto-file {
+        width: 100%;
+        color: var(--text-3);
+        font-size: 12px;
+      }
 
       /* ---------- right preview ---------- */
       .preview {
@@ -654,6 +680,7 @@
         <nav class="tabs">
           <button class="tab on" id="tab-examples">示例</button>
           <button class="tab" id="tab-pdf">PDF 转换</button>
+          <button class="tab" id="tab-crypto">签章演示</button>
         </nav>
 
         <div class="panel" id="panel-examples">
@@ -668,7 +695,7 @@
             <div class="drop" id="drop">
               <div class="big">拖入 PDF 文件，或点击选择</div>
               <div class="sub">转换后可在右侧预览并下载 .ofd</div>
-              <input type="file" id="pdfFile" accept="application/pdf" hidden />
+              <input type="file" id="pdfFile" accept="application/pdf,.ofd" hidden />
             </div>
             <div class="file-chip" id="fileChip" style="display: none">
               <div class="ic">PDF</div>
@@ -684,6 +711,28 @@
             <div class="pdf-note">
               转换保留：文本（逐字真实步进）、矢量图形、位图、透明度、多页与页面旋转。<br />
               不转换：混合模式、图案渐变、Type3 字体、注释。
+            </div>
+          </div>
+        </div>
+
+        <div class="panel hidden" id="panel-crypto">
+          <div class="pdf-panel">
+            <div class="pdf-note">
+              SES V4 电子签章：生成测试证书链和标准电子印章，对当前文档签章。
+              签章用于证明签章者身份并检测篡改，不加密正文。测试材料仅用于演示。
+            </div>
+            <div class="pdf-actions">
+              <button class="btn dark" id="signCurrent">▸ 签章当前文档并下载</button>
+              <button class="btn soft" id="downloadSigned" disabled>⤓ 再次下载</button>
+            </div>
+            <div class="pdf-note">选择一个签章 OFD，或直接使用刚生成的签章文件进行可信验签。</div>
+            <input class="crypto-file" type="file" id="signatureFile" accept=".ofd" />
+            <div class="pdf-actions">
+              <button class="btn dark" id="verifySigned">验证签章</button>
+              <button class="btn soft" id="tamperSigned">篡改后验证</button>
+            </div>
+            <div class="pdf-note" id="signatureInfo">
+              点击“签章当前文档并下载”后，将自动验证签章者、制章者证书链和文档完整性。
             </div>
           </div>
         </div>

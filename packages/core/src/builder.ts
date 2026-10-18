@@ -200,8 +200,18 @@ export function buildOFDPackage(ctx: BuildContext): ZipEntry[] {
     }
     doc += `  </ofd:CommonData>\n`;
     doc += `  <ofd:Pages>\n`;
-    ctx.pages.forEach((_page, idx) => {
-      doc += `    <ofd:Page ID="${pageIds[idx]}" BaseLoc="Pages/Page_${idx}/Content.xml"/>\n`;
+    ctx.pages.forEach((page, idx) => {
+      // GB/T 33190 allows a per-page Area overriding the CommonData template —
+      // required when pages use different formats (A4 + A5 …).
+      const w = fmt(page.width * MM_PER_PT);
+      const h = fmt(page.height * MM_PER_PT);
+      if (w !== w0 || h !== h0) {
+        doc += `    <ofd:Page ID="${pageIds[idx]}" BaseLoc="Pages/Page_${idx}/Content.xml">\n`;
+        doc += `      <ofd:Area><ofd:PhysicalBox>0 0 ${w} ${h}</ofd:PhysicalBox></ofd:Area>\n`;
+        doc += `    </ofd:Page>\n`;
+      } else {
+        doc += `    <ofd:Page ID="${pageIds[idx]}" BaseLoc="Pages/Page_${idx}/Content.xml"/>\n`;
+      }
     });
     doc += `  </ofd:Pages>\n`;
     if (ctx.outlineRoot.children.length) {
