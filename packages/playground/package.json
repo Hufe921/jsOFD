@@ -1,6 +1,6 @@
 {
   "name": "@jsofd/playground",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "private": true,
   "description": "Interactive jsOFD playground: live code examples, SVG preview and PDF → OFD conversion.",
   "license": "MIT",

@@ -1,7 +1,7 @@
 {
   "name": "jsofd",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "jsOFD monorepo: packages/core (library) and packages/playground (interactive demo).",
   "license": "MIT",
   "type": "module",
