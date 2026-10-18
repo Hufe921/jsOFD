@@ -79,5 +79,9 @@
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public"
+  },
+  "dependencies": {
+    "asn1js": "3.1.0",
+    "sm-crypto": "0.5.7"
   }
 }

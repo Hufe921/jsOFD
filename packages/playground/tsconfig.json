@@ -9,5 +9,5 @@
       "@hufe921/jsofd/pdf": ["../core/src/pdf-import.ts"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "../core/src/crypto/sm-crypto.d.ts"]
 }

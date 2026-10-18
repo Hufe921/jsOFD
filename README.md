@@ -37,15 +37,17 @@ pnpm add @hufe921/jsofd pdfjs-dist      # + PDF → OFD 转换
 
 ## 核心能力
 
-| 类别     | 说明                                                                   |
-| -------- | ---------------------------------------------------------------------- |
-| 文本     | 字体/字号/颜色、对齐（含两端）、自动断行（中英混排）、基线、旋转、字距 |
-| 中文字体 | 内置宋/黑/楷/仿宋 + **TTF 嵌入**（任何阅读器渲染一致）                 |
-| 图形     | 直线、贝塞尔、矩形、圆角矩形、圆、椭圆、三角形、虚线、透明度           |
-| 图像     | PNG/JPEG/GIF/BMP/TIFF 原样嵌入、旋转、去重                             |
-| 交互     | 超链接、层级书签、附件                                                 |
-| PDF 转换 | 逐条重放绘制指令流，保留真实排版数据                                   |
-| 输出     | 全同步：`arraybuffer` · `blob` · `dataurlstring` 等                    |
+| 类别     | 说明                                                                                  |
+| -------- | ------------------------------------------------------------------------------------- |
+| 文本     | 字体/字号/颜色、对齐（含两端）、自动断行（中英混排）、基线、旋转、字距                |
+| 中文字体 | 内置宋/黑/楷/仿宋 + **TTF 嵌入**（任何阅读器渲染一致）                                |
+| 图形     | 直线、贝塞尔、矩形、圆角矩形、圆、椭圆、三角形、虚线、透明度                          |
+| 图像     | PNG/JPEG/GIF/BMP/TIFF 原样嵌入、旋转、去重                                            |
+| 交互     | 超链接、层级书签、附件                                                                |
+| 安全     | 水印、脱敏；SES 制章/签章与可信验签；GM/T 0099 口令加密（SM4-CBC）                    |
+| PDF 转换 | 逐条重放绘制指令流，保留真实排版数据                                                  |
+| OFD 读取 | 解析 OFD 包：页面/文本/图形/图片/书签/附件/元数据，导出 SVG/PNG、全文提取、可编辑回写 |
+| 输出     | 全同步：`arraybuffer` · `blob` · `dataurlstring` 等                                   |
 
 ## 嵌入字体（中文推荐）
 
@@ -63,6 +65,17 @@ doc.setFont('simsun');
 import { pdfToOfd } from '@hufe921/jsofd/pdf';
 const doc = await pdfToOfd(pdfBytes, { workerSrc: '/pdf.worker.min.mjs' });
 doc.save('converted.ofd');
+```
+
+## 读取 OFD
+
+```ts
+import { parseOfd, extractText, pageToSvg } from '@hufe921/jsofd';
+
+const ofd = await parseOfd(ofdBytes); // 解析 GB/T 33190 包
+extractText(ofd); // 每页文本
+pageToSvg(ofd.pages[0], { zoom: 3 }); // 渲染为可选中文字的 SVG
+ofd.outlines; // 书签树 / 附件 / 签名清单 / DocType
 ```
 
 ## 开发

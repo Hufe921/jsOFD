@@ -49,7 +49,7 @@ jsOFD 的目标是**让 jsPDF 代码零成本迁移到 OFD**：方法名、参�
 | -------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `doc.addFont()` 的 postScriptName 三段式重载 | 保留 jsPDF 的 `(postScriptName, fontName, fontStyle)` 签名，同时推荐更明确的 `addFontTtf` |
 | `doc.setLanguage` 写入 /Lang                 | OFD 的语言标记挂在附件与元数据上，仅保留方法兼容、无渲染影响                              |
-| 加密 / 权限（`encryption` 选项）             | OFD 加密是独立的标准分册（GB/T 33190.7），涉及证书体系，不适合轻量库内置                  |
+| 加密 / 权限（`encryption` 选项）             | 不兼容 jsPDF 的选项式加密；使用独立的 `encryptOfdPassword` / `decryptOfdPassword`（GM/T 0099 口令方案） |
 | `html()` 的 CSS 布局引擎                     | 完整 CSS 排版是一个浏览器级工程；`html()` 定位为语义标签渲染器，需要精确版式请用原生 API  |
 
 ## 行为差异细节

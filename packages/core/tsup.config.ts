@@ -8,7 +8,7 @@ export default defineConfig([
     globalName: 'jsOFD',
     dts: true,
     sourcemap: false,
-    target: 'es2018',
+    target: 'es2020',
     platform: 'browser',
     clean: true,
     outExtension({ format }) {
